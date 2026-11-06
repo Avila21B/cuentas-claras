@@ -1,0 +1,17 @@
+{
+  "name": "Cuentas claras: gastos, presupuesto y ahorros",
+  "short_name": "Cuentas claras",
+  "description": "Control de gastos, presupuesto, pagos fijos y ahorros. Funciona sin internet.",
+  "lang": "es",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDF1EF",
+  "theme_color": "#10261F",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,60 @@
+CUENTAS CLARAS - Control de dinero (versión independiente)
+==========================================================
+
+Esta carpeta es la app completa. No necesita Claude, ni cuenta, ni internet
+para usarse. Tus datos se guardan solo en el dispositivo donde la uses.
+
+Archivos (deben quedarse juntos):
+  index.html              la app
+  manifest.webmanifest    nombre e ícono para instalarla
+  sw.js                   permite abrirla sin internet
+  icon-*.png              íconos
+
+
+1) EN LA COMPUTADORA (lo más fácil)
+-----------------------------------
+Haz doble clic en index.html. Se abre en tu navegador y funciona sin
+internet. Usa siempre el mismo navegador, porque ahí se guardan tus datos.
+
+
+2) EN EL CELULAR COMO APP (recomendada)
+---------------------------------------
+Los celulares solo instalan una app web si se abre una vez desde una
+dirección https. Sube esta carpeta UNA sola vez a un alojamiento gratuito
+(Netlify Drop: arrastras la carpeta; o GitHub Pages / Cloudflare Pages).
+
+Luego abre el enlace en el celular e instálala:
+  - Android (Chrome): ☰ > Ajustes y datos > Instalar, o menú ⋮ > Instalar app.
+  - iPhone (Safari): Compartir > Agregar a inicio.
+Ábrela una vez con internet. Desde ahí funciona sin conexión.
+
+Opcional, solo Android: para un archivo .apk, pega tu enlace en
+pwabuilder.com y descarga el paquete para Android.
+
+
+3) ALARMAS DE TUS PAGOS FIJOS
+-----------------------------
+En la pestaña Fijos toca "Descargar" en "Alarmas en tu celular". Se
+descarga pagos-fijos.ics con todos tus pagos mensuales. Al abrirlo se
+agregan a tu calendario y te avisa un día antes y el mismo día a las 9:00,
+aunque la app esté cerrada.
+  - iPhone: abre el archivo y toca "Agregar todo".
+  - Android: si tu calendario no lo abre directamente, entra desde la
+    computadora a calendar.google.com > Configuración > Importar y
+    elige el archivo.
+Si agregas o cambias pagos fijos, vuelve a descargarlo. Los eventos se
+actualizan en lugar de duplicarse.
+
+
+4) PASAR TUS DATOS DESDE LA VERSIÓN DE CLAUDE (o al revés)
+---------------------------------------------------------
+En una: ☰ > Ajustes y datos > Exportar.
+En la otra: ☰ > Ajustes y datos > Importar, y elige ese archivo.
+
+
+5) CUIDA TUS DATOS
+------------------
+Si desinstalas la app, borras los datos del navegador o cambias de
+celular, se pierde lo que no hayas respaldado. Haz una copia desde
+Ajustes y datos > Exportar cada cierto tiempo y guárdala en tu nube o
+envíatela por correo. La app te dice cuándo fue tu última copia.
