@@ -446,6 +446,57 @@ dialog::backdrop{background:rgba(5,15,12,.5)}
   </form>
 </dialog>
 
+<!-- préstamo -->
+<dialog class="sheet" id="lnSheet" aria-labelledby="lnTitle">
+  <form id="lnForm" class="sh" novalidate autocomplete="off">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheethead"><h3 id="lnTitle">Nuevo préstamo</h3><button type="button" class="btn ghost small" data-close>Cerrar</button></div>
+    <div class="seg two" id="lnDir" role="group" aria-label="Tipo de préstamo">
+      <button type="button" data-v="lent">Yo presté</button>
+      <button type="button" data-v="borrowed">Me prestaron</button>
+    </div>
+    <div class="field">
+      <label for="lnPerson" id="lnPersonLbl">¿A quién le prestaste?</label>
+      <input type="text" id="lnPerson" maxlength="40" placeholder="Nombre de la persona">
+      <div class="pick" id="lnPeople"></div>
+    </div>
+    <label class="amount-in"><span class="cursym">S/</span><input type="text" id="lnAmount" inputmode="decimal" placeholder="0.00" aria-label="Monto prestado"></label>
+    <div class="row2">
+      <label class="field"><span>Fecha del préstamo</span><input type="date" id="lnDate"></label>
+      <label class="field"><span id="lnDueLbl">¿Cuándo te lo devuelve? (opcional)</span><input type="date" id="lnDue"></label>
+    </div>
+    <div class="field"><span id="lnAccLbl">¿De qué cuenta salió el dinero?</span><div class="pick" id="lnAccs"></div></div>
+    <label class="field"><span>Nota (opcional)</span><input type="text" id="lnNote" maxlength="120" placeholder="Ej.: para el pasaje"></label>
+    <p class="help">Un préstamo no cuenta como gasto ni como ingreso. Si eliges una cuenta, ajusto su saldo; si no, solo lo anoto.</p>
+    <div class="sheetfoot">
+      <button type="button" class="btn danger" id="lnDelete" hidden>Eliminar</button>
+      <button type="submit" class="btn primary" id="lnSave">Guardar</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- detalle de préstamo y pagos -->
+<dialog class="sheet" id="lpSheet" aria-labelledby="lpTitle">
+  <div class="sh">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheethead"><h3 id="lpTitle">Préstamo</h3><button type="button" class="btn ghost small" data-close>Cerrar</button></div>
+    <div>
+      <p class="msg" id="lpSum"></p>
+      <div class="gbar"><i id="lpBar" style="width:0%"></i></div>
+      <div class="gnums" id="lpNums"></div>
+    </div>
+    <form id="lpForm" novalidate autocomplete="off" style="display:grid;gap:16px">
+      <label class="amount-in"><span class="cursym">S/</span><input type="text" id="lpAmount" inputmode="decimal" placeholder="0.00" aria-label="Monto devuelto"></label>
+      <div class="quick" id="lpQuick"></div>
+      <label class="field"><span>Fecha</span><input type="date" id="lpDate"></label>
+      <div class="field"><span id="lpAccLbl">¿A qué cuenta entró?</span><div class="pick" id="lpAccs"></div></div>
+      <button type="submit" class="btn primary" id="lpSave" style="padding:13px">Anotar pago</button>
+    </form>
+    <div id="lpHist"></div>
+    <div class="sheetfoot"><button type="button" class="btn" id="lpEdit">Editar préstamo</button></div>
+  </div>
+</dialog>
+
 <!-- confirmar -->
 <dialog class="sheet" id="confirmSheet" aria-labelledby="kTitle">
   <div class="sh">
@@ -581,6 +632,15 @@ function normGoal(x){
   if(x.example) g.example = true;
   return g;
 }
+function normLoan(x){
+  if(!x || !x.person) return null;
+  var pays = Array.isArray(x.payments) ? x.payments.filter(function(p){ return p && isKey(p.date); }).map(function(p){
+    return {id: validId(p.id) ? p.id : uid(), amount: Math.abs(cents(p.amount)), date:p.date, account: typeof p.account === "string" ? p.account : "", created: Number(p.created) || Date.now()};
+  }) : [];
+  return {id: validId(x.id) ? x.id : uid(), dir: x.dir === "borrowed" ? "borrowed" : "lent", person: String(x.person).slice(0,40), amount: Math.abs(cents(x.amount)),
+    date: isKey(x.date) ? x.date : TODAY, due: isKey(x.due) ? x.due : "", account: typeof x.account === "string" ? x.account : "",
+    note: typeof x.note === "string" ? x.note.slice(0,120) : "", payments: pays, created: Number(x.created) || Date.now()};
+}
 function normCore(d){
   d = d && typeof d === "object" ? d : {};
   var cats = Array.isArray(d.cats) ? d.cats.filter(function(c){ return c && validId(c.id) && c.name; }).map(function(c){ return {id:c.id, name:String(c.name).slice(0,30), emoji:String(c.emoji||"🏷️").slice(0,8), kind: c.kind === "ingreso" ? "ingreso" : "gasto", budget: Math.max(0, cents(c.budget))}; }) : defaultCats();
@@ -591,9 +651,9 @@ function normCore(d){
 }
 
 var CORE_KEYS = ["settings","cats","accounts"];
-var COLS = ["tx","fixed","goals"];
-var NORM = {tx:normTx, fixed:normFixed, goals:normGoal};
-var S = {tx:[], fixed:[], goals:[]};
+var COLS = ["tx","fixed","goals","loans"];
+var NORM = {tx:normTx, fixed:normFixed, goals:normGoal, loans:normLoan};
+var S = {tx:[], fixed:[], goals:[], loans:[]};
 function applyCore(d){ var c = normCore(d); CORE_KEYS.forEach(function(k){ S[k] = c[k]; }); fmtCache = {}; }
 applyCore({});
 function coreData(){ var o = {}; CORE_KEYS.forEach(function(k){ o[k] = clone(S[k]); }); o.updatedAt = Date.now(); return o; }
@@ -672,13 +732,13 @@ async function initCloud(){
   try{ hadLocal = !!localStorage.getItem(LKEY); }catch(e){}
   try{
     var base = db.doc("data/users/"+id+"/cuentas");
-    store.cols = {tx: base.collection("tx"), fixed: base.collection("fixed"), goals: base.collection("goals")};
+    store.cols = {}; COLS.forEach(function(n){ store.cols[n] = base.collection(n); });
     store.coreRef = base;
   }catch(e){ setSync("local"); return; }
   store.mode = "cloud"; setSync("loading");
   var timer = setTimeout(function(){ setSync("slow"); }, 10000);
-  var seen = {tx:false, fixed:false, goals:false, core:false};
-  var maybeClear = function(){ if(seen.tx && seen.fixed && seen.goals && seen.core && hadLocal){ try{ localStorage.removeItem(LKEY); }catch(e){} } };
+  var seen = {core:false}; COLS.forEach(function(n){ seen[n] = false; });
+  var maybeClear = function(){ if(COLS.every(function(n){ return seen[n]; }) && seen.core && hadLocal){ try{ localStorage.removeItem(LKEY); }catch(e){} } };
   COLS.forEach(function(name){
     store.cols[name].onSnapshot(function(snap){
       S[name] = snap.docs.map(function(d){ return NORM[name](Object.assign({}, d.data(), {id:d.id})); }).filter(Boolean);
@@ -769,6 +829,11 @@ function balances(){ return memo("bal", function(){
     else if(t.kind === "ingreso" || t.kind === "unsave") add(t.account, t.amount);
     else if(t.kind === "transfer"){ add(t.account, -t.amount); add(t.to, t.amount); }
   });
+  S.loans.forEach(function(l){
+    var sg = l.dir === "lent" ? -1 : 1;
+    if(l.account) add(l.account, sg * l.amount);
+    l.payments.forEach(function(p){ if(p.account) add(p.account, -sg * p.amount); });
+  });
   return m;
 }); }
 function totals(){ return memo("tot", function(){
@@ -785,6 +850,23 @@ function goalMonthly(g){
   var cm = TODAY.slice(0,7), months = (Number(g.month.slice(0,4)) - Number(cm.slice(0,4)))*12 + (Number(g.month.slice(5)) - Number(cm.slice(5))) + 1;
   return Math.ceil(left / Math.max(1, months));
 }
+function loanOf(id){ return S.loans.find(function(l){ return l.id === id; }); }
+function loanInfo(l){
+  var paid = l.payments.reduce(function(s,p){ return s + p.amount; }, 0), left = Math.max(0, l.amount - paid);
+  return {paid:paid, left:left, done: left <= 0, days: l.due ? diffDays(TODAY, l.due) : null};
+}
+function loanTotals(){ return memo("loans", function(){
+  var o = {toMe:0, iOwe:0, nToMe:0, nIOwe:0};
+  S.loans.forEach(function(l){ var i = loanInfo(l); if(i.done) return; if(l.dir === "lent"){ o.toMe += i.left; o.nToMe++; } else { o.iOwe += i.left; o.nIOwe++; } });
+  return o;
+}); }
+function peopleList(){
+  var seen = {}, out = [];
+  S.loans.slice().sort(function(a,b){ return b.created - a.created; }).forEach(function(l){ var k = l.person.trim().toLowerCase(); if(!seen[k]){ seen[k] = 1; out.push(l.person.trim()); } });
+  return out;
+}
+function accUsed(id){ return S.tx.some(function(t){ return t.account === id || t.to === id; }) || S.loans.some(function(l){ return l.account === id || l.payments.some(function(p){ return p.account === id; }); }); }
+function dueText(days){ return days < 0 ? "Venció hace "+(-days)+(days === -1 ? " día" : " días") : days === 0 ? "Vence hoy" : days === 1 ? "Vence mañana" : "Vence en "+days+" días"; }
 function catStatus(spent, budget){
   if(!budget) return "";
   var r = spent / budget;
@@ -803,6 +885,10 @@ function alerts(){
     var sp = st.byCat[c.id] || 0;
     if(sp > c.budget) out.push({cls:"bad", t:c.emoji+" "+c.name+": te pasaste del límite", d:"Llevas "+money(sp)+" de "+money(c.budget), cat:c.id});
     else if(sp >= c.budget*0.85) out.push({cls:"", t:c.emoji+" "+c.name+": cerca del límite", d:"Llevas "+money(sp)+" de "+money(c.budget), cat:c.id});
+  });
+  S.loans.forEach(function(l){
+    var i = loanInfo(l); if(i.done || i.days === null || i.days > 3) return;
+    out.push({cls: i.days < 0 && l.dir === "borrowed" ? "bad" : "", t: l.dir === "borrowed" ? "Devolver a "+l.person : "Cobrar a "+l.person, d: dueText(i.days)+", falta "+money(i.left), loan:l.id});
   });
   return out;
 }
@@ -906,7 +992,7 @@ function fixedRow(x){
 }
 
 /* ================= vistas ================= */
-function isEmpty(){ return !S.tx.length && !S.fixed.length && !S.goals.length && !S.settings.budget; }
+function isEmpty(){ return !S.tx.length && !S.fixed.length && !S.goals.length && !S.loans.length && !S.settings.budget; }
 function onboarding(){
   var hasBal = S.accounts.some(function(a){ return a.initial; });
   return '<div class="empty" style="margin-top:16px"><p><b>Empieza en tres pasos.</b> Con esto ya puedo decirte cuánto puedes gastar cada día.</p>'+
@@ -945,6 +1031,7 @@ function viewInicio(){
 
   if(cur) alerts().slice(0,4).forEach(function(a){
     h += a.fx ? '<button type="button" class="alert '+a.cls+'" data-act="pay" data-id="'+a.fx+'" data-pk="'+pk+'"><span>'+esc(a.t)+'<small>'+esc(a.d)+'</small></span><b>'+(fixedOf(a.fx).kind === "gasto" ? "Pagar" : "Cobrar")+'</b></button>'
+      : a.loan ? '<button type="button" class="alert '+a.cls+'" data-act="loan" data-id="'+a.loan+'"><span>'+esc(a.t)+'<small>'+esc(a.d)+'</small></span><b>Ver</b></button>'
       : '<a class="alert '+a.cls+'" href="#presupuesto"><span>'+esc(a.t)+'<small>'+esc(a.d)+'</small></span><b>Ver</b></a>';
   });
 
@@ -956,6 +1043,12 @@ function viewInicio(){
   var t = totals();
   h += '<div class="sec"><h2>Tus cuentas</h2><a href="#cuentas">Tienes '+money(t.have)+'</a></div>' + accCards();
   if(t.owe) h += '<p class="note">Debes '+money(t.owe)+' en tarjetas. Para pagarlas, haz una transferencia desde tu cuenta a la tarjeta.</p>';
+  var lt = loanTotals();
+  if(lt.nToMe || lt.nIOwe){
+    h += '<div class="sec"><h2>Préstamos</h2><a href="#prestamos">Ver todos</a></div><div class="accs">'+
+      '<a class="acc" href="#prestamos" style="text-decoration:none"><span>📤 Te deben</span><b style="color:var(--income)">'+money(lt.toMe)+'</b><small>'+lt.nToMe+(lt.nToMe === 1 ? " préstamo" : " préstamos")+'</small></a>'+
+      '<a class="acc" href="#prestamos" style="text-decoration:none"><span>📥 Debes</span><b class="'+(lt.iOwe ? "neg" : "")+'">'+money(lt.iOwe)+'</b><small>'+lt.nIOwe+(lt.nIOwe === 1 ? " préstamo" : " préstamos")+'</small></a></div>';
+  }
   h += '<div class="sec"><h2>Últimos movimientos</h2><a href="#movimientos">Ver todos</a></div>';
   h += st.list.length ? '<ul class="list">'+st.list.slice(0,5).map(function(x){ return txRow(x, true); }).join("")+'</ul>' : '<div class="empty"><p>Sin movimientos en este mes. Toca «Anotar» para registrar uno.</p></div>';
   return h;
@@ -1067,6 +1160,47 @@ function viewCuentas(){
   return h;
 }
 
+function loanRow(l, withPerson){
+  var i = loanInfo(l), tag = "", meta = [];
+  if(i.done) tag = '<span class="tag ok">Saldado</span>';
+  else if(i.days !== null && i.days < 0) tag = '<span class="tag bad">Vencido</span>';
+  else if(i.days !== null && i.days <= 3) tag = '<span class="tag warn">'+(i.days === 0 ? "Hoy" : "En "+i.days+(i.days === 1 ? " día" : " días"))+'</span>';
+  var title = withPerson ? l.person + (l.note ? " · "+l.note : "") : (l.note || "Préstamo del "+dayMonth(l.date));
+  if(withPerson || l.note) meta.push(esc(dayMonth(l.date)));
+  meta.push("de "+money(l.amount));
+  if(i.paid && !i.done) meta.push((l.dir === "lent" ? "te devolvió " : "devolviste ")+money(i.paid));
+  if(l.due && !i.done) meta.push("vence "+esc(dayMonth(l.due)));
+  var amt = i.done ? '<span class="amt tr">'+money(l.amount)+'</span>' : '<span class="amt'+(l.dir === "lent" ? " inc" : "")+'">'+money(i.left)+'<small>falta</small></span>';
+  return '<li><button type="button" class="li" data-act="loan" data-id="'+l.id+'"><span class="em" aria-hidden="true">'+(l.dir === "lent" ? "📤" : "📥")+'</span><span><span class="t">'+esc(title)+tag+'</span><span class="m">'+meta.join(" · ")+'</span></span>'+amt+'</button></li>';
+}
+function loanSection(dir){
+  var open = S.loans.filter(function(l){ return l.dir === dir && !loanInfo(l).done; });
+  var h = '<div class="sec"><h2>'+(dir === "lent" ? "Me deben" : "Yo debo")+'</h2><small>'+money(open.reduce(function(s,l){ return s + loanInfo(l).left; }, 0))+'</small></div>';
+  if(!open.length) h += '<div class="empty"><p>'+(dir === "lent" ? "Nadie te debe dinero por ahora." : "No le debes dinero a nadie.")+'</p></div>';
+  var groups = {}, order = [];
+  open.sort(function(a,b){ var da = a.due || "9999", db = b.due || "9999"; return da < db ? -1 : da > db ? 1 : a.date < b.date ? -1 : 1; }).forEach(function(l){
+    var k = l.person.trim().toLowerCase(); if(!groups[k]){ groups[k] = []; order.push(k); } groups[k].push(l);
+  });
+  order.forEach(function(k){
+    var g = groups[k], tot = g.reduce(function(s,l){ return s + loanInfo(l).left; }, 0);
+    h += '<div class="dayh"><b>'+esc(g[0].person)+'</b><span>'+(dir === "lent" ? "Te debe " : "Le debes ")+money(tot)+'</span></div><ul class="list">'+g.map(function(l){ return loanRow(l, false); }).join("")+'</ul>';
+  });
+  return h + '<button class="add-btn" type="button" data-act="new-loan" data-v="'+dir+'">'+(dir === "lent" ? "+ Le presté a alguien" : "+ Alguien me prestó")+'</button>';
+}
+function viewPrestamos(){
+  var lt = loanTotals();
+  var h = '<header class="head">'+topHTML()+'<h1>Préstamos</h1><p class="sub">Anota a quién le prestaste y quién te prestó, y ve cuánto falta devolver.</p></header>';
+  var net = lt.toMe - lt.iOwe;
+  h += '<div class="trio"><div><span>Me deben</span><b class="inc">'+moneyShort(lt.toMe)+'</b></div><div><span>Yo debo</span><b class="'+(lt.iOwe ? "neg" : "")+'">'+moneyShort(lt.iOwe)+'</b></div><div><span>Balance</span><b class="'+(net < 0 ? "neg" : "")+'">'+moneyShort(net)+'</b></div></div>';
+  h += loanSection("lent") + loanSection("borrowed");
+  var done = S.loans.filter(function(l){ return loanInfo(l).done; }).sort(function(a,b){ return b.created - a.created; });
+  if(done.length){
+    h += '<div class="sec"><h2>Saldados</h2><a href="#" data-act="loan-done">'+(ui.showDone ? "Ocultar" : "Ver "+done.length)+'</a></div>';
+    if(ui.showDone) h += '<ul class="list">'+done.map(function(l){ return loanRow(l, true); }).join("")+'</ul>';
+  }
+  return h;
+}
+
 function viewReportes(){
   var cur = curPeriod(), pks = []; for(var i = 5; i >= 0; i--) pks.push(addMonths(cur, -i));
   var data = pks.map(function(pk){ var s = stats(pk); return {pk:pk, inc:s.inc, exp:s.exp}; });
@@ -1121,17 +1255,18 @@ function viewAjustes(){
   return h;
 }
 function viewMas(){
-  var t = totals();
+  var t = totals(), lt = loanTotals();
   var item = function(href, ic, tt, d){ return '<li><a href="#'+href+'"><span class="mi" aria-hidden="true">'+ic+'</span><span>'+tt+'<small>'+d+'</small></span><span class="chev" aria-hidden="true">›</span></a></li>'; };
   return '<header class="head">'+topHTML()+'<h1>Más</h1></header><ul class="menu">'+
     item("cuentas","🏦","Cuentas","Tienes "+money(t.have)+(t.owe ? ", debes "+money(t.owe) : ""))+
+    item("prestamos","🤝","Préstamos", lt.nToMe || lt.nIOwe ? "Te deben "+money(lt.toMe)+", debes "+money(lt.iOwe) : "Plata que prestaste o te prestaron")+
     item("reportes","📊","Reportes","Tus últimos 6 meses y en qué gastas más")+
     item("categorias","🏷️","Categorías","Límites por categoría y categorías propias")+
     item("ajustes","⚙️","Ajustes y datos","Copias, moneda, inicio de mes y alarmas")+'</ul>';
 }
 
 /* ================= pintado ================= */
-var VIEWS = {inicio:viewInicio, movimientos:viewMovimientos, presupuesto:viewPresupuesto, fijos:viewFijos, ahorros:viewAhorros, cuentas:viewCuentas, reportes:viewReportes, categorias:viewCategorias, ajustes:viewAjustes, mas:viewMas};
+var VIEWS = {inicio:viewInicio, movimientos:viewMovimientos, presupuesto:viewPresupuesto, fijos:viewFijos, ahorros:viewAhorros, cuentas:viewCuentas, reportes:viewReportes, categorias:viewCategorias, ajustes:viewAjustes, mas:viewMas, prestamos:viewPrestamos};
 var renderQueued = false;
 function scheduleRender(){ if(renderQueued) return; renderQueued = true; requestAnimationFrame(function(){ renderQueued = false; render(); }); }
 function render(){
@@ -1144,9 +1279,9 @@ function render(){
   document.querySelectorAll("#view [data-keep]").forEach(function(el){ if(keep[el.dataset.keep] != null) el.value = keep[el.dataset.keep]; });
   if(actKey){ var el = document.querySelector('#view [data-keep="'+actKey+'"]'); if(el){ el.focus({preventScroll:true}); try{ if(selStart != null) el.setSelectionRange(selStart, selStart); }catch(e){} } }
   document.querySelectorAll(".tab").forEach(function(a){ if(a.dataset.tab === ui.view) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
-  var fab = {inicio:"Anotar", movimientos:"Anotar", presupuesto:"Anotar", fijos:"Pago fijo", ahorros:"Meta", cuentas:"Cuenta"}[ui.view];
+  var fab = {inicio:"Anotar", movimientos:"Anotar", presupuesto:"Anotar", fijos:"Pago fijo", ahorros:"Meta", cuentas:"Cuenta", prestamos:"Préstamo"}[ui.view];
   $("fab").hidden = !fab; $("fabTxt").textContent = fab || "";
-  $("fab").setAttribute("aria-label", {Anotar:"Anotar un gasto o ingreso", "Pago fijo":"Agregar pago fijo", Meta:"Crear meta de ahorro", Cuenta:"Agregar cuenta"}[fab] || "Agregar");
+  $("fab").setAttribute("aria-label", {Anotar:"Anotar un gasto o ingreso", "Pago fijo":"Agregar pago fijo", Meta:"Crear meta de ahorro", Cuenta:"Agregar cuenta", "Préstamo":"Anotar un préstamo"}[fab] || "Agregar");
   document.querySelectorAll(".cursym").forEach(function(e){ e.textContent = curSymbol(); });
   $("txCur").textContent = curSymbol();
   checkNotify();
@@ -1211,6 +1346,9 @@ $("view").addEventListener("click", function(e){
     case "save": openSave(goalOf(id), "save"); break;
     case "unsave": openSave(goalOf(id), "unsave"); break;
     case "budget": openBudget(); break;
+    case "loan": openLoanDetail(loanOf(id)); break;
+    case "new-loan": openLoan(null, el.dataset.v); break;
+    case "loan-done": e.preventDefault(); ui.showDone = !ui.showDone; render(); break;
     case "filter": ui.filter = el.dataset.v; render(); break;
     case "examples": loadExamples(); break;
     case "clear-examples": clearExamples(); break;
@@ -1235,7 +1373,7 @@ $("view").addEventListener("change", function(e){
 });
 $("fab").addEventListener("click", function(){
   var v = ui.view;
-  if(v === "fijos") openFixed(null); else if(v === "ahorros") openGoal(null); else if(v === "cuentas") openAcc(null); else openTx(null, "gasto");
+  if(v === "fijos") openFixed(null); else if(v === "ahorros") openGoal(null); else if(v === "cuentas") openAcc(null); else if(v === "prestamos") openLoan(null, "lent"); else openTx(null, "gasto");
 });
 
 /* ================= hoja de movimiento ================= */
@@ -1451,6 +1589,111 @@ $("svForm").addEventListener("submit", function(e){
   toast(s.kind === "save" ? (sv >= g.target ? "¡Meta cumplida! Ahorraste "+money(sv) : "Apartaste "+money(amount)) : "Retiraste "+money(amount));
 });
 
+/* ================= préstamos ================= */
+var lns = $("lnSheet"), lps = $("lpSheet");
+var NO_ACC = {id:"", label:"No mover mis cuentas"};
+function openLoan(l, dir){
+  ui.lform = {editing: l ? l.id : null, dir: l ? l.dir : (dir === "borrowed" ? "borrowed" : "lent"), account: l ? l.account : ""};
+  $("lnPerson").value = l ? l.person : "";
+  $("lnAmount").value = l ? plainAmount(l.amount) : "";
+  $("lnDate").value = l ? l.date : TODAY; $("lnDue").value = l ? l.due : "";
+  $("lnNote").value = l ? l.note : "";
+  $("lnDelete").hidden = !l;
+  lnSync(); openDlg(lns);
+  if(!l) setTimeout(function(){ $("lnPerson").focus(); }, 60);
+}
+function lnPeopleSync(){
+  var cur = $("lnPerson").value.trim().toLowerCase();
+  $("lnPeople").innerHTML = peopleList().slice(0,10).map(function(p){ return '<button type="button" data-p="'+esc(p)+'" aria-pressed="'+(p.toLowerCase() === cur)+'">'+esc(p)+'</button>'; }).join("");
+}
+function lnSync(){
+  var f = ui.lform, lent = f.dir === "lent";
+  segSet($("lnDir"), f.dir);
+  $("lnTitle").textContent = (f.editing ? "Editar préstamo" : lent ? "Le presté a alguien" : "Alguien me prestó");
+  $("lnPersonLbl").textContent = lent ? "¿A quién le prestaste?" : "¿Quién te prestó?";
+  $("lnDueLbl").textContent = lent ? "¿Cuándo te lo devuelve? (opcional)" : "¿Cuándo lo devuelves? (opcional)";
+  $("lnAccLbl").textContent = lent ? "¿De qué cuenta salió el dinero?" : "¿A qué cuenta entró el dinero?";
+  $("lnAccs").innerHTML = pickHTML([NO_ACC].concat(accItems(f.account)), f.account, "a");
+  lnPeopleSync();
+}
+$("lnDir").addEventListener("click", function(e){ var b = e.target.closest("button"); if(!b) return; ui.lform.dir = b.dataset.v; lnSync(); });
+$("lnAccs").addEventListener("click", function(e){ var b = e.target.closest("[data-a]"); if(!b) return; ui.lform.account = b.dataset.a; lnSync(); });
+$("lnPeople").addEventListener("click", function(e){ var b = e.target.closest("[data-p]"); if(!b) return; $("lnPerson").value = b.dataset.p; lnPeopleSync(); $("lnAmount").focus(); });
+$("lnPerson").addEventListener("input", lnPeopleSync);
+$("lnForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var f = ui.lform, person = $("lnPerson").value.trim(), amount = parseAmount($("lnAmount").value);
+  if(!person){ $("lnPerson").focus(); toast("Escribe el nombre de la persona"); return; }
+  if(!amount){ $("lnAmount").focus(); toast("Escribe el monto"); return; }
+  var l = f.editing ? loanOf(f.editing) : {id:uid(), created:Date.now(), payments:[]};
+  if(!l){ lns.close(); return; }
+  if(f.editing){ var paid = loanInfo(l).paid; if(amount < paid){ toast("Ya se devolvió "+money(paid)+". El monto no puede ser menor."); return; } }
+  var known = peopleList().find(function(p){ return p.toLowerCase() === person.toLowerCase(); });
+  l.dir = f.dir; l.person = (known || person).slice(0,40); l.amount = amount;
+  l.date = isKey($("lnDate").value) ? $("lnDate").value : TODAY; l.due = isKey($("lnDue").value) ? $("lnDue").value : "";
+  l.account = f.account; l.note = $("lnNote").value.trim().slice(0,120);
+  if(!f.editing) S.loans.push(l);
+  persist("loans", l); lns.close(); render();
+  toast(f.editing ? "Cambios guardados" : (l.dir === "lent" ? l.person+" te debe "+money(amount) : "Le debes "+money(amount)+" a "+l.person));
+});
+$("lnDelete").addEventListener("click", function(){
+  var l = loanOf(ui.lform.editing); if(!l) return;
+  ask("¿Eliminar este préstamo?", (l.dir === "lent" ? "Le prestaste " : "Te prestó ")+money(l.amount)+(l.dir === "lent" ? " a " : " ")+l.person+". También se borran sus pagos"+(l.account || l.payments.some(function(p){ return p.account; }) ? " y se deshace su efecto en tus cuentas." : "."), "Eliminar", true).then(function(ok){
+    if(!ok) return; removeItem("loans", l.id); lns.close(); render(); toast("Préstamo eliminado");
+  });
+});
+function openLoanDetail(l){
+  if(!l) return;
+  var keep = l.account && activeAccounts().some(function(a){ return a.id === l.account; }) ? l.account : "";
+  ui.lp = {id:l.id, account: keep};
+  $("lpAmount").value = ""; $("lpDate").value = TODAY;
+  lpSync(); openDlg(lps);
+}
+function lpSync(){
+  var l = loanOf(ui.lp.id); if(!l){ lps.close(); return; }
+  var i = loanInfo(l), lent = l.dir === "lent";
+  $("lpTitle").textContent = i.done ? "Saldado con "+l.person : lent ? l.person+" te debe" : "Le debes a "+l.person;
+  $("lpSum").textContent = (lent ? "Le prestaste " : "Te prestó ")+money(l.amount)+" el "+dayMonth(l.date)+(l.note ? " ("+l.note+")" : "")+"."+
+    (l.due && !i.done ? " "+dueText(i.days)+(i.days < 0 ? "" : " ("+dayMonth(l.due)+")")+"." : "");
+  $("lpBar").style.width = (l.amount ? Math.min(100, i.paid / l.amount * 100) : 0)+"%";
+  $("lpNums").innerHTML = '<span><b>'+money(i.paid)+'</b> devuelto</span><span>'+(i.done ? "¡Todo devuelto!" : "Falta "+money(i.left))+'</span>';
+  $("lpForm").hidden = i.done;
+  $("lpAccLbl").textContent = lent ? "¿A qué cuenta entró?" : "¿De qué cuenta salió?";
+  $("lpSave").textContent = lent ? "Anotar lo que me devolvió" : "Anotar lo que devolví";
+  $("lpQuick").innerHTML = i.left ? '<button type="button" data-v="'+i.left+'">Todo lo que falta ('+money(i.left)+')</button>' : "";
+  $("lpAccs").innerHTML = pickHTML([NO_ACC].concat(accItems(ui.lp.account)), ui.lp.account, "a");
+  var pays = l.payments.slice().sort(function(a,b){ return a.date < b.date ? 1 : a.date > b.date ? -1 : b.created - a.created; });
+  $("lpHist").innerHTML = pays.length ? '<p class="help" style="margin-bottom:6px"><b>Pagos anotados</b></p><ul class="list">'+pays.map(function(p){
+    return '<li><div class="li"><span class="em" aria-hidden="true">✓</span><span><span class="t">'+money(p.amount)+'</span><span class="m">'+esc(dayMonth(p.date))+(p.account ? " · "+esc(accOf(p.account).name) : "")+'</span></span><button type="button" class="btn ghost small" data-del="'+p.id+'">Quitar</button></div></li>';
+  }).join("")+'</ul>' : '<p class="help">Aún no hay pagos anotados.</p>';
+}
+$("lpQuick").addEventListener("click", function(e){ var b = e.target.closest("[data-v]"); if(b) $("lpAmount").value = plainAmount(Number(b.dataset.v)); });
+$("lpAccs").addEventListener("click", function(e){ var b = e.target.closest("[data-a]"); if(!b) return; ui.lp.account = b.dataset.a; lpSync(); });
+$("lpForm").addEventListener("submit", function(e){
+  e.preventDefault();
+  var l = loanOf(ui.lp.id); if(!l) return;
+  var amount = parseAmount($("lpAmount").value), i = loanInfo(l);
+  if(!amount){ $("lpAmount").focus(); toast("Escribe el monto"); return; }
+  if(amount > i.left){ toast("Solo falta "+money(i.left)); return; }
+  l.payments.push({id:uid(), amount:amount, date: isKey($("lpDate").value) ? $("lpDate").value : TODAY, account: ui.lp.account, created:Date.now()});
+  persist("loans", l);
+  $("lpAmount").value = "";
+  if(loanInfo(l).done){ lps.close(); toast(l.dir === "lent" ? "¡"+l.person+" te pagó todo!" : "¡Le pagaste todo a "+l.person+"!"); }
+  else { lpSync(); toast("Pago anotado. Falta "+money(loanInfo(l).left)); }
+  render();
+});
+$("lpHist").addEventListener("click", function(e){
+  var b = e.target.closest("[data-del]"); if(!b) return;
+  var l = loanOf(ui.lp.id); if(!l) return;
+  var p = l.payments.find(function(x){ return x.id === b.dataset.del; }); if(!p) return;
+  ask("¿Quitar este pago?", money(p.amount)+" del "+dayMonth(p.date)+". Volverá a sumarse a lo que falta.", "Quitar", true).then(function(ok){
+    if(!ok) return;
+    l.payments = l.payments.filter(function(x){ return x.id !== p.id; });
+    persist("loans", l); render(); openDlg(lps); lpSync(); toast("Pago quitado");
+  });
+});
+$("lpEdit").addEventListener("click", function(){ var l = loanOf(ui.lp.id); lps.close(); openLoan(l); });
+
 /* ================= cuentas ================= */
 var acs = $("acSheet");
 function openAcc(a){
@@ -1460,7 +1703,7 @@ function openAcc(a){
   $("acName").value = a ? a.name : ""; $("acEmoji").value = a ? a.emoji : "";
   $("acBal").value = a ? plainAmount(a.kind === "credit" ? Math.max(0,-bal) : Math.abs(bal)) : "";
   ui.aform.neg = a && a.kind !== "credit" && bal < 0;
-  var used = a && S.tx.some(function(t){ return t.account === a.id || t.to === a.id; });
+  var used = a && accUsed(a.id);
   $("acDelete").hidden = !a; $("acDelete").textContent = a ? (a.archived ? "Desarchivar" : used ? "Archivar" : "Eliminar") : "Eliminar";
   acSync(); openDlg(acs);
   if(!a) setTimeout(function(){ $("acName").focus(); }, 60);
@@ -1489,7 +1732,7 @@ $("acForm").addEventListener("submit", function(e){
 $("acDelete").addEventListener("click", function(){
   var a = accOf(ui.aform.editing); if(!a) return;
   if(a.archived){ a.archived = false; persistCore(); acs.close(); render(); toast("Cuenta activa otra vez"); return; }
-  var used = S.tx.some(function(t){ return t.account === a.id || t.to === a.id; });
+  var used = accUsed(a.id);
   if(activeAccounts().length <= 1){ toast("Necesitas al menos una cuenta"); return; }
   ask(used ? "¿Archivar «"+a.name+"»?" : "¿Eliminar «"+a.name+"»?", used ? "Tiene movimientos, así que la guardo como archivada: no aparecerá al anotar, pero tu historial queda intacto." : "No tiene movimientos.", used ? "Archivar" : "Eliminar", !used).then(function(ok){
     if(!ok) return;
@@ -1674,8 +1917,9 @@ $("fileImport").addEventListener("change", async function(e){
   try{
     var data = JSON.parse(await file.text());
     if(!data || data.app !== "cuentas-claras" || !Array.isArray(data.tx)) throw new Error("formato");
-    var ok = await ask("¿Restaurar esta copia?", "Se reemplaza todo lo que tienes ahora por la copia del "+(data.exported ? fmtDay(data.exported) : "archivo")+": "+data.tx.length+" movimientos, "+(data.fixed||[]).length+" pagos fijos y "+(data.goals||[]).length+" metas.", "Restaurar", true);
+    var ok = await ask("¿Restaurar esta copia?", "Se reemplaza todo lo que tienes ahora por la copia del "+(data.exported ? fmtDay(data.exported) : "archivo")+": "+data.tx.length+" movimientos, "+(data.fixed||[]).length+" pagos fijos, "+(data.goals||[]).length+" metas y "+(data.loans||[]).length+" préstamos.", "Restaurar", true);
     if(!ok) return;
+    replaceCollection("loans", (Array.isArray(data.loans) ? data.loans : []).map(normLoan).filter(Boolean));
     replaceCollection("tx", data.tx.map(normTx).filter(Boolean));
     replaceCollection("fixed", (data.fixed || []).map(normFixed).filter(Boolean));
     replaceCollection("goals", (data.goals || []).map(normGoal).filter(Boolean));
